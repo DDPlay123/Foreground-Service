@@ -17,8 +17,8 @@ import androidx.core.app.NotificationCompat
  * https://developer.android.com/about/versions/14/changes/fgs-types-required?hl=zh-tw
  */
 class CountdownService : Service() {
+    // 倒數計時器
     private var countDownTimer: CountDownTimer? = null
-    private var timeRemaining: Long = 0
 
     override fun onDestroy() {
         super.onDestroy()
@@ -74,7 +74,8 @@ class CountdownService : Service() {
         countDownTimer?.cancel() // 取消任何現有的計時器
         countDownTimer = object : CountDownTimer(second * ONE_SECOND, ONE_SECOND) {
             override fun onTick(millisUntilFinished: Long) {
-                timeRemaining = millisUntilFinished / ONE_SECOND
+                val timeRemaining = millisUntilFinished / ONE_SECOND
+                SharedRepository.setCountdownTime(timeRemaining)
                 updateNotification(timeRemaining)
                 Log.e("CountdownService", "onTick: $timeRemaining")
             }

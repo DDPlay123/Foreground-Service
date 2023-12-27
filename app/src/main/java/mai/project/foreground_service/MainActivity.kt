@@ -20,6 +20,7 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissions()
         }
+        setObserver()
         setListener()
     }
 
@@ -29,6 +30,12 @@ class MainActivity : AppCompatActivity() {
         val permissionGranted = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
         if (!permissionGranted) {
             requestPermissions(arrayOf(permission), 0)
+        }
+    }
+
+    private fun setObserver() = with(SharedRepository) {
+        countdownTime.observe(this@MainActivity) {
+            binding.tvState.text = it.toString()
         }
     }
 

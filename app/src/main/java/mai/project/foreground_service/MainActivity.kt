@@ -1,16 +1,19 @@
 package mai.project.foreground_service
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.IBinder
+import androidx.annotation.RequiresApi
 import mai.project.foreground_service.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
-    private val binding: ActivityMainBinding by lazy { ActivityMainBinding.inflate(layoutInflater) }
-
+    private lateinit var binding: ActivityMainBinding
     private lateinit var countdownService: CountdownService
     private var isBound = false
 
@@ -29,6 +32,11 @@ class MainActivity : AppCompatActivity() {
                     binding.btnStart.text = "開始"
                 }
             }
+
+            if (countdownService.isCountingDown()) {
+                binding.btnStart.text = "停止"
+                binding.tvState.text = "倒數中: ${countdownService.timeRemaining} 秒"
+            }
         }
 
         override fun onServiceDisconnected(className: ComponentName?) {
@@ -38,23 +46,32 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setListener()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        if (isBound) {
-            unbindService(serviceConnection)
-            isBound = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestPermissions()
         }
+        setListener()
     }
 
     override fun onStart() {
         super.onStart()
         Intent(this@MainActivity, CountdownService::class.java).also { intent ->
             bindService(intent, serviceConnection, BIND_AUTO_CREATE)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun requestPermissions() {
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        val permissionGranted = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+        if (!permissionGranted) {
+            requestPermissions(arrayOf(permission), 0)
         }
     }
 
@@ -65,7 +82,7 @@ class MainActivity : AppCompatActivity() {
                     countdownService.stopCountdown()
                     btnStart.text = "開始"
                 } else {
-                    countdownService.startCountdown(10)
+                    countdownService.startCountdown(100)
                     btnStart.text = "停止"
                 }
             }

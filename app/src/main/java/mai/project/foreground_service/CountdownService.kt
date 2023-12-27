@@ -1,16 +1,14 @@
 package mai.project.foreground_service
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Binder
-import android.os.Build
 import android.os.CountDownTimer
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 
 /**
@@ -19,62 +17,50 @@ import androidx.core.app.NotificationCompat
  * https://developer.android.com/about/versions/14/changes/fgs-types-required?hl=zh-tw
  */
 class CountdownService : Service() {
-    private val binder = CountdownBinder()
     private var countDownTimer: CountDownTimer? = null
-    private var isTimerActive = false
-    var timeRemaining: Long = 0
-        private set
-
-    var countdownListener: CountdownListener? = null
-
-    override fun onCreate() {
-        super.onCreate()
-    }
+    private var timeRemaining: Long = 0
 
     override fun onDestroy() {
         super.onDestroy()
         countDownTimer?.cancel()
+        stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, createNotification("倒數計時 Service"))
+        when (intent?.action) {
+            ACTION_START -> {
+                startCountdown(intent.getLongExtra(EXTRA_COUNTDOWN_TIME, 0))
+                startForeground(NOTIFICATION_ID, createNotification("Foreground Service"))
+            }
+
+            ACTION_STOP -> {
+                stopCountdown()
+                stopSelf()
+            }
+        }
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent): IBinder = binder
+    override fun onBind(intent: Intent): IBinder? = null
 
     private fun createNotification(contentText: String): Notification {
-        val notificationChannelId = "channel_id"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Countdown Channel"
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
-            val channel = NotificationChannel(notificationChannelId, name, importance)
-            val notificationManager: NotificationManager =
-                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
-        }
-
-        val pendingIntent = getDefaultPendingIntent()
-
-        val builder = NotificationCompat.Builder(this, notificationChannelId)
-            .setContentTitle("倒數計時 Service")
-            .setContentText(contentText)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setAutoCancel(false)
-            .setContentIntent(pendingIntent)
-
-        return builder.build()
-    }
-
-    private fun getDefaultPendingIntent(): PendingIntent {
         val resultIntent = Intent(applicationContext, MainActivity::class.java)
         resultIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        return PendingIntent.getActivity(
+        val pendingIntent = PendingIntent.getActivity(
             applicationContext,
             0,
             resultIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT
         )
+
+        val builder = NotificationCompat.Builder(this, App.CHANNEL_ID)
+            .setContentTitle("倒數計時 Service")
+            .setContentText(contentText)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setOngoing(true)
+            .setContentIntent(pendingIntent)
+
+        return builder.build()
     }
 
     private fun updateNotification(second: Long) {
@@ -84,42 +70,32 @@ class CountdownService : Service() {
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
-    fun isCountingDown(): Boolean = isTimerActive
-
-    fun startCountdown(second: Long) {
+    private fun startCountdown(second: Long) {
         countDownTimer?.cancel() // 取消任何現有的計時器
-        isTimerActive = true
         countDownTimer = object : CountDownTimer(second * ONE_SECOND, ONE_SECOND) {
             override fun onTick(millisUntilFinished: Long) {
                 timeRemaining = millisUntilFinished / ONE_SECOND
                 updateNotification(timeRemaining)
-                countdownListener?.onTick(timeRemaining)
+                Log.e("CountdownService", "onTick: $timeRemaining")
             }
 
             override fun onFinish() {
-                isTimerActive = false
-                countdownListener?.onFinish()
+                Log.e("CountdownService", "onFinish")
+                stopSelf()
             }
         }.start()
     }
 
-    fun stopCountdown() {
+    private fun stopCountdown() {
         countDownTimer?.cancel()
-        isTimerActive = false
-    }
-
-    inner class CountdownBinder : Binder() {
-        fun getService(): CountdownService = this@CountdownService
-    }
-
-    interface CountdownListener {
-        fun onTick(second: Long)
-        fun onFinish()
     }
 
     companion object {
         private const val NOTIFICATION_ID = 1
-
         private const val ONE_SECOND = 1000L
+
+        const val ACTION_START = "CountdownService.action.START"
+        const val ACTION_STOP = "CountdownService.action.STOP"
+        const val EXTRA_COUNTDOWN_TIME = "CountdownService.extra.COUNTDOWN_TIME"
     }
 }

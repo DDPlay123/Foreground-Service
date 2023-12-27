@@ -19,7 +19,6 @@ class CountdownAdapter : ListAdapter<Pair<Int, Long>, ViewHolder>(diffUtil) {
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     )
-                    setTextColor(Color.BLACK)
                     textSize = 16f
                 }
                 return MyViewHolder(textView)

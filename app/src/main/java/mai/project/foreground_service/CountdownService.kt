@@ -1,10 +1,8 @@
 package mai.project.foreground_service
 
 import android.app.Notification
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.os.CountDownTimer
 import android.os.IBinder
@@ -18,24 +16,29 @@ import androidx.core.app.NotificationCompat
  */
 class CountdownService : Service() {
     // 倒數計時器
-    private var countDownTimer: CountDownTimer? = null
+    private val countdownTimers = mutableMapOf<Int, CountDownTimer>()
+    private var nextTimerId = 0
 
     override fun onDestroy() {
         super.onDestroy()
-        countDownTimer?.cancel()
+        countdownTimers.values.forEach { it.cancel() }
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                startCountdown(intent.getLongExtra(EXTRA_COUNTDOWN_TIME, 0))
-                startForeground(NOTIFICATION_ID, createNotification("Foreground Service"))
+                val timerId = nextTimerId++
+                val time = intent.getLongExtra(EXTRA_COUNTDOWN_TIME, 0)
+                startCountdown(time, timerId)
+                startForeground(NOTIFICATION_ID, createNotification())
             }
 
             ACTION_STOP -> {
-                stopCountdown()
-                stopSelf()
+                val timerId = intent.getIntExtra(EXTRA_TIMER_ID, -1)
+                if (timerId != -1) {
+                    stopCountdown(timerId)
+                }
             }
         }
         return START_STICKY
@@ -43,7 +46,7 @@ class CountdownService : Service() {
 
     override fun onBind(intent: Intent): IBinder? = null
 
-    private fun createNotification(contentText: String): Notification {
+    private fun createNotification(): Notification {
         val resultIntent = Intent(applicationContext, MainActivity::class.java)
         resultIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val pendingIntent = PendingIntent.getActivity(
@@ -55,7 +58,7 @@ class CountdownService : Service() {
 
         val builder = NotificationCompat.Builder(this, App.CHANNEL_ID)
             .setContentTitle("倒數計時 Service")
-            .setContentText(contentText)
+            .setContentText("倒數計時進行中...")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
@@ -63,32 +66,34 @@ class CountdownService : Service() {
         return builder.build()
     }
 
-    private fun updateNotification(second: Long) {
-        val notification = createNotification("剩餘時間: $second 秒")
-        val notificationManager: NotificationManager =
-            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, notification)
-    }
-
-    private fun startCountdown(second: Long) {
-        countDownTimer?.cancel() // 取消任何現有的計時器
-        countDownTimer = object : CountDownTimer(second * ONE_SECOND, ONE_SECOND) {
+    private fun startCountdown(seconds: Long, timerId: Int) {
+        countdownTimers[timerId]?.cancel()
+        val timer = object : CountDownTimer(seconds * ONE_SECOND, ONE_SECOND) {
             override fun onTick(millisUntilFinished: Long) {
                 val timeRemaining = millisUntilFinished / ONE_SECOND
-                SharedRepository.setCountdownTime(timeRemaining)
-                updateNotification(timeRemaining)
-                Log.e("CountdownService", "onTick: $timeRemaining")
+                SharedRepository.setCountdownTime(timerId, timeRemaining)
+                Log.e("CountdownService", "onTick ${timerId}: $timeRemaining")
             }
 
             override fun onFinish() {
-                Log.e("CountdownService", "onFinish")
-                stopSelf()
+                Log.e("CountdownService", "onFinish $timerId")
+                countdownTimers[timerId]?.cancel()
+                countdownTimers.remove(timerId)
+                if (countdownTimers.isEmpty()) {
+                    stopSelf()
+                }
             }
         }.start()
+        countdownTimers[timerId] = timer
+        timer.start()
     }
 
-    private fun stopCountdown() {
-        countDownTimer?.cancel()
+    private fun stopCountdown(timerId: Int) {
+        countdownTimers[timerId]?.cancel()
+        countdownTimers.remove(timerId)
+        if (countdownTimers.isEmpty()) {
+            stopSelf()
+        }
     }
 
     companion object {
@@ -98,5 +103,6 @@ class CountdownService : Service() {
         const val ACTION_START = "CountdownService.action.START"
         const val ACTION_STOP = "CountdownService.action.STOP"
         const val EXTRA_COUNTDOWN_TIME = "CountdownService.extra.COUNTDOWN_TIME"
+        const val EXTRA_TIMER_ID = "CountdownService.extra.TIMER_ID"
     }
 }
